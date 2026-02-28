@@ -16,7 +16,7 @@ const logger = require('../utils/logger');
 class TriageSystem {
   constructor() {
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    
+
     // Flash-Lite for cheap classification
     this.flashLite = this.genAI.getGenerativeModel({
       model: 'gemini-2.5-flash-lite',
@@ -25,7 +25,7 @@ class TriageSystem {
         temperature: 0.1,
       }
     });
-    
+
     // Gemini Pro for complex responses
     this.geminiPro = this.genAI.getGenerativeModel({
       model: 'gemini-2.5-pro',
@@ -34,7 +34,7 @@ class TriageSystem {
         temperature: 0.3,
       }
     });
-    
+
     // Cost tracking
     this.costTracker = {
       flashLiteCalls: 0,
@@ -53,7 +53,7 @@ class TriageSystem {
    */
   async processMessage(message, context) {
     const startTime = Date.now();
-    
+
     try {
       // LAYER 1: Check Cache (Semantic)
       const cached = await this.checkCache(message, context.serverId);
@@ -67,37 +67,37 @@ class TriageSystem {
           persona: context.persona
         };
       }
-      
+
       // LAYER 2: Flash-Lite Classification
       const classification = await this.classifyMessage(message);
       this.costTracker.flashLiteCalls++;
       this.costTracker.totalCost += 0.00001; // ~$0.00001 per call
-      
+
       // Handle based on classification
       let response;
       let source;
-      
+
       switch (classification) {
         case 'greeting':
           response = this.getGreetingResponse();
           source = 'hardcoded';
           break;
-          
+
         case 'junk':
           response = null; // Ignore
           source = 'filtered';
           break;
-          
+
         case 'faq':
           response = await this.getFAQResponse(message, context);
           source = 'faq_db';
           break;
-          
+
         case 'toxic':
           response = await this.handleToxicity(message, context);
           source = 'moderation';
           break;
-          
+
         case 'complex':
         default:
           // LAYER 3: Gemini Pro (expensive, only when needed)
@@ -107,12 +107,12 @@ class TriageSystem {
           this.costTracker.totalCost += 0.02; // ~$0.02 per call
           break;
       }
-      
+
       // Cache the response (if not null and not toxic)
       if (response && classification !== 'toxic') {
         await this.cacheResponse(message, response, context.serverId);
       }
-      
+
       return {
         response,
         source,
@@ -121,10 +121,10 @@ class TriageSystem {
         persona: context.persona,
         classification
       };
-      
+
     } catch (error) {
       logger.error('Triage system error:', error);
-      
+
       // Graceful degradation
       return {
         response: this.getFallbackResponse(),
@@ -145,20 +145,20 @@ class TriageSystem {
       // Simple implementation: exact match + recent (24h)
       const cacheKey = `cache:${serverId}:${this.hashMessage(message)}`;
       const cached = await redis.get(cacheKey);
-      
+
       if (cached) {
         const parsed = JSON.parse(cached);
         const age = Date.now() - parsed.timestamp;
-        
+
         // Cache valid for 24 hours
         if (age < 86400000) {
           return parsed.response;
         }
       }
-      
+
       this.costTracker.cacheMisses++;
       return null;
-      
+
     } catch (error) {
       logger.error('Cache check error:', error);
       return null;
@@ -175,10 +175,10 @@ class TriageSystem {
         response,
         timestamp: Date.now()
       });
-      
+
       // Expire after 24 hours
       await redis.setex(cacheKey, 86400, value);
-      
+
     } catch (error) {
       logger.error('Cache store error:', error);
     }
@@ -204,15 +204,15 @@ Respond with ONLY the category word (greeting/junk/faq/toxic/complex):
     try {
       const result = await this.flashLite.generateContent(prompt);
       const classification = result.response.text().trim().toLowerCase();
-      
+
       // Validate classification
       const validClasses = ['greeting', 'junk', 'faq', 'toxic', 'complex'];
       if (validClasses.includes(classification)) {
         return classification;
       }
-      
+
       return 'complex'; // Default to AI if uncertain
-      
+
     } catch (error) {
       logger.error('Classification error:', error);
       return 'complex'; // Fail safe: use AI
@@ -235,9 +235,25 @@ Respond with ONLY the category word (greeting/junk/faq/toxic/complex):
   /**
    * Get FAQ response from database
    */
+  /**
+   * Set the FAQ system reference (called from CommunityBot)
+   */
+  setFAQSystem(faqSystem) {
+    this.faqSystem = faqSystem;
+  }
+
   async getFAQResponse(message, context) {
-    // TODO: Implement FAQ database lookup
-    // For MVP, pass to Gemini with FAQ context
+    // Try FAQ database first (free)
+    if (this.faqSystem) {
+      const faqAnswer = await this.faqSystem.findAnswer(message, context.serverId);
+      if (faqAnswer) {
+        return faqAnswer;
+      }
+    }
+
+    // No FAQ match — fall back to Gemini Pro (paid)
+    this.costTracker.geminiProCalls++;
+    this.costTracker.totalCost += 0.02;
     return this.generateAIResponse(message, context);
   }
 
@@ -245,10 +261,52 @@ Respond with ONLY the category word (greeting/junk/faq/toxic/complex):
    * Handle toxic content
    */
   async handleToxicity(message, context) {
-    // TODO: Implement moderation logic
-    // For MVP, return null (let human mods handle)
-    logger.warn(`Toxic content detected in ${context.serverId}: ${message}`);
-    return null;
+    logger.warn(`⚠️ Toxic content detected in ${context.serverId} by ${context.username}: "${message.slice(0, 80)}"`);
+
+    try {
+      // Use Gemini Pro to assess severity
+      const assessPrompt = `
+You are a Discord moderation assistant. Assess this message for toxicity.
+
+Message: "${message}"
+Server: ${context.serverName}
+User: ${context.username}
+
+Respond in JSON ONLY:
+{"severity": <1-10>, "reason": "<short reason>", "action": "<warn|mute|escalate>"}
+`;
+      const result = await this.geminiPro.generateContent(assessPrompt);
+      this.costTracker.geminiProCalls++;
+      this.costTracker.totalCost += 0.02;
+
+      let assessment;
+      try {
+        const text = result.response.text().trim();
+        assessment = JSON.parse(text.replace(/```json?\n?/g, '').replace(/```/g, ''));
+      } catch {
+        assessment = { severity: 5, reason: 'Could not parse', action: 'escalate' };
+      }
+
+      // Low severity (1-3): just monitor
+      if (assessment.severity <= 3) {
+        logger.info(`Low toxicity (${assessment.severity}/10), monitoring only.`);
+        return null;
+      }
+
+      // Medium+ severity: warn and log
+      logger.warn(`Toxicity severity ${assessment.severity}/10 — action: ${assessment.action} — reason: ${assessment.reason}`);
+
+      if (assessment.severity >= 7) {
+        return `⚠️ **Please keep the conversation respectful.** Our moderation team has been notified.`;
+      }
+
+      return `💬 Hey ${context.username}, let's keep things friendly! If you have concerns, reach out to a moderator.`;
+
+    } catch (error) {
+      logger.error('Toxicity assessment error:', error);
+      // Fail safe: escalate to human mods
+      return null;
+    }
   }
 
   /**
@@ -271,7 +329,7 @@ Respond naturally in character. Be helpful but concise (max 2 sentences).
     try {
       const result = await this.geminiPro.generateContent(prompt);
       return result.response.text().trim();
-      
+
     } catch (error) {
       logger.error('Gemini Pro error:', error);
       return this.getFallbackResponse();
@@ -309,9 +367,9 @@ Respond naturally in character. Be helpful but concise (max 2 sentences).
   getCostReport() {
     return {
       ...this.costTracker,
-      cacheHitRate: this.costTracker.cacheHits / 
+      cacheHitRate: this.costTracker.cacheHits /
         (this.costTracker.cacheHits + this.costTracker.cacheMisses || 1),
-      avgCostPerMessage: this.costTracker.totalCost / 
+      avgCostPerMessage: this.costTracker.totalCost /
         (this.costTracker.flashLiteCalls + this.costTracker.geminiProCalls || 1)
     };
   }

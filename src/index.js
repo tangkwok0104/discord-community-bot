@@ -36,12 +36,15 @@ class CommunityBot {
     this.agents = new MultiAgentSystem();
     this.faq = new FAQSystem();
     this.commands = new CommandHandler(this);
-    
+
+    // Wire FAQ system into triage for database lookups
+    this.triage.setFAQSystem(this.faq);
+
     // State tracking
     this.isReady = false;
     this.serverCount = 0;
     this.messageCount = 0;
-    
+
     // Bind event handlers
     this.setupEventHandlers();
   }
@@ -52,16 +55,16 @@ class CommunityBot {
   async start() {
     try {
       logger.info('🚀 Starting Community Bot...');
-      
+
       // Initialize services
       await initializeDatabase();
       await initializeRedis();
-      
+
       // Login to Discord
       await this.client.login(process.env.DISCORD_TOKEN);
-      
+
       logger.info('✅ Bot started successfully!');
-      
+
     } catch (error) {
       logger.error('❌ Failed to start bot:', error);
       process.exit(1);
@@ -73,14 +76,14 @@ class CommunityBot {
    */
   setupEventHandlers() {
     // Ready event
-    this.client.once('ready', () => {
+    this.client.once('ready', async () => {
       this.isReady = true;
       this.serverCount = this.client.guilds.cache.size;
-      
+
       logger.info(`🟢 Logged in as ${this.client.user.tag}`);
       logger.info(`📊 Serving ${this.serverCount} servers`);
       logger.info(`🤖 Multi-agent system active: Kelly, Bruce, Gamma`);
-      
+
       // Register slash commands
       await this.commands.registerCommands();
     });
@@ -89,10 +92,10 @@ class CommunityBot {
     this.client.on('messageCreate', async (message) => {
       // Ignore bots and self
       if (message.author.bot) return;
-      
+
       // Ignore DMs (for now)
       if (!message.guild) return;
-      
+
       // Process message
       await this.handleMessage(message);
     });
@@ -124,16 +127,16 @@ class CommunityBot {
   async handleMessage(message) {
     try {
       this.messageCount++;
-      
+
       // Select persona based on message context
       const personaKey = this.agents.selectPersona(message.content, {
         serverId: message.guild.id,
         userId: message.author.id,
         channelId: message.channel.id
       });
-      
+
       const persona = this.agents.getPersona(personaKey);
-      
+
       // Build context for triage
       const context = {
         serverId: message.guild.id,
@@ -143,17 +146,17 @@ class CommunityBot {
         channelId: message.channel.id,
         persona: persona
       };
-      
+
       // Process through triage system
       const result = await this.triage.processMessage(message.content, context);
-      
+
       // Log for monitoring
       logger.info(`[${personaKey}] ${message.author.username}: "${message.content.slice(0, 30)}..." -> ${result.source} (${result.latency}ms)`);
-      
+
       // Send response if exists
       if (result.response) {
         await this.agents.sendAs(personaKey, message.channel, result.response);
-        
+
         // Add to history
         this.agents.addToHistory(message.author.id, {
           type: 'message',
@@ -163,10 +166,10 @@ class CommunityBot {
           source: result.source
         });
       }
-      
+
     } catch (error) {
       logger.error('Message handling error:', error);
-      
+
       // Graceful degradation: Send fallback
       try {
         await message.channel.send('🤖 I\'m having a moment. Please try again!');
@@ -182,16 +185,16 @@ class CommunityBot {
   async handleNewMember(member) {
     try {
       logger.info(`👋 New member joined: ${member.user.tag} (${member.guild.name})`);
-      
+
       // Find welcome channel
       const welcomeChannel = member.guild.channels.cache.find(
         channel => channel.name.includes('welcome') || channel.name.includes('general')
       );
-      
+
       if (welcomeChannel) {
         await this.agents.welcomeNewMember(member, welcomeChannel);
       }
-      
+
     } catch (error) {
       logger.error('Welcome handler error:', error);
     }
@@ -202,19 +205,19 @@ class CommunityBot {
    */
   async shutdown() {
     logger.info('🛑 Shutting down gracefully...');
-    
+
     // Set offline status
     if (this.client.user) {
       await this.client.user.setStatus('invisible');
     }
-    
+
     // Destroy client
     this.client.destroy();
-    
+
     // Log stats
     logger.info(`📊 Final stats: ${this.messageCount} messages processed`);
     logger.info(`💰 Cost report:`, this.triage.getCostReport());
-    
+
     logger.info('👋 Goodbye!');
     process.exit(0);
   }

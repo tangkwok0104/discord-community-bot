@@ -30,10 +30,10 @@ async function initializeDatabase() {
     });
 
     db = admin.firestore();
-    
+
     logger.info('🟢 Firebase initialized');
     return db;
-    
+
   } catch (error) {
     logger.error('Firebase initialization failed:', error);
     logger.warn('⚠️ Running without database (features limited)');
@@ -51,7 +51,7 @@ function getDB() {
 /**
  * Server configuration collection
  */
-function getServerConfig(serverId) {
+function getServerConfigRef(serverId) {
   if (!db) return null;
   return db.collection('servers').doc(serverId);
 }
@@ -111,10 +111,10 @@ async function getServerConfig(serverId) {
 module.exports = {
   initializeDatabase,
   getDB,
+  getServerConfigRef,
   getServerConfig,
   getUserHistory,
   getFAQCollection,
   getUsageCollection,
-  saveServerConfig,
-  getServerConfig
+  saveServerConfig
 };

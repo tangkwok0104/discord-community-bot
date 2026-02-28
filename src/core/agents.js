@@ -21,7 +21,7 @@ const PERSONAS = {
     greeting: 'Hey there! Welcome! 🦦',
     farewell: 'See you around! 👋'
   },
-  
+
   bear: {
     name: 'Bear (Mod Agent)',
     avatar: 'https://cdn.discordapp.com/attachments/placeholder/bear.png',
@@ -32,7 +32,7 @@ const PERSONAS = {
     greeting: 'Hey, I\'m Bear. Let\'s keep this community safe and friendly. 🐻',
     farewell: 'Stay safe out there.'
   },
-  
+
   owl: {
     name: 'Owl (Analytics)',
     avatar: 'https://cdn.discordapp.com/attachments/placeholder/owl.png',
@@ -60,19 +60,19 @@ class MultiAgentSystem {
       // Check if webhook already exists
       const webhooks = await channel.fetchWebhooks();
       let webhook = webhooks.find(wh => wh.name === 'Community Agents');
-      
+
       if (!webhook) {
         // Create new webhook
         webhook = await channel.createWebhook({
           name: 'Community Agents',
-          avatar: PERSONAS.kelly.avatar,
+          avatar: PERSONAS.otter.avatar,
           reason: 'Multi-agent community management'
         });
       }
-      
+
       this.webhooks.set(channel.id, webhook);
       return webhook;
-      
+
     } catch (error) {
       logger.error(`Failed to initialize webhook for ${channel.id}:`, error);
       return null;
@@ -119,7 +119,7 @@ class MultiAgentSystem {
 
     } catch (error) {
       logger.error(`Failed to send as ${personaKey}:`, error);
-      
+
       // Fallback to regular message
       try {
         return await channel.send({
@@ -138,25 +138,25 @@ class MultiAgentSystem {
    */
   selectPersona(message, context) {
     const content = message.toLowerCase();
-    
+
     // Toxicity keywords → Bear
     const toxicKeywords = ['ban', 'report', 'toxic', 'harass', 'spam', 'raid'];
     if (toxicKeywords.some(kw => content.includes(kw))) {
       return 'bear';
     }
-    
+
     // Stats/analytics keywords → Owl
     const analyticsKeywords = ['stats', 'analytics', 'data', 'growth', 'report', 'metrics'];
     if (analyticsKeywords.some(kw => content.includes(kw))) {
       return 'owl';
     }
-    
+
     // Welcome/greeting → Otter
     const welcomeKeywords = ['welcome', 'hello', 'hi ', 'new here', 'joining'];
     if (welcomeKeywords.some(kw => content.includes(kw))) {
       return 'otter';
     }
-    
+
     // Default: Otter for general help
     return 'otter';
   }
@@ -166,7 +166,7 @@ class MultiAgentSystem {
    */
   async welcomeNewMember(member, channel) {
     const persona = PERSONAS.otter;
-    
+
     const embed = new EmbedBuilder()
       .setColor(persona.color)
       .setTitle(`Welcome to ${member.guild.name}!`)
@@ -181,7 +181,7 @@ class MultiAgentSystem {
       .setTimestamp();
 
     await this.sendAs('otter', channel, '', { embeds: [embed] });
-    
+
     // Store in conversation history
     this.addToHistory(member.id, {
       type: 'welcome',
@@ -195,11 +195,11 @@ class MultiAgentSystem {
    */
   async sendModerationAlert(user, channel, reason, confidence) {
     const persona = PERSONAS.bear;
-    
+
     let action = 'Monitoring';
     if (confidence > 90) action = 'Auto-moderated';
     else if (confidence > 70) action = 'Shadow muted (awaiting mod review)';
-    
+
     const embed = new EmbedBuilder()
       .setColor(persona.color)
       .setTitle('🛡️ Moderation Alert')
@@ -221,7 +221,7 @@ class MultiAgentSystem {
    */
   async sendAnalyticsReport(channel, data) {
     const persona = PERSONAS.owl;
-    
+
     const embed = new EmbedBuilder()
       .setColor(persona.color)
       .setTitle('📊 Weekly Analytics Report')
@@ -245,13 +245,13 @@ class MultiAgentSystem {
     if (!this.conversationHistory.has(userId)) {
       this.conversationHistory.set(userId, []);
     }
-    
+
     const history = this.conversationHistory.get(userId);
     history.push({
       ...data,
       timestamp: Date.now()
     });
-    
+
     // Keep only last 30 days
     const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
     const filtered = history.filter(h => h.timestamp > thirtyDaysAgo);
