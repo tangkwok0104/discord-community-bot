@@ -187,11 +187,13 @@ class CommunityBot {
 
         // Execute moderation action
         try {
-          if (result.moderationAction === 'delete') {
-            await message.delete();
+          // Both 'delete' and 'timeout' actions should remove the offending message
+          if (['delete', 'timeout'].includes(result.moderationAction)) {
+            await message.delete().catch(() => { });
             logger.info(`🗑️ Deleted message from ${message.author.username} (${result.classification})`);
           }
 
+          // Apply timeout if required
           if (result.moderationAction === 'timeout') {
             const member = await message.guild.members.fetch(message.author.id);
             await member.timeout(60 * 1000, `Auto-moderated: ${result.classification}`); // 1 min timeout

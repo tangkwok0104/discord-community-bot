@@ -140,10 +140,23 @@ class TriageSystem {
           source = 'rules_intent';
           break;
 
-        case 'toxic':
-          response = await this.handleToxicity(message, context);
+        case 'toxic': {
+          const toxResult = await this.handleToxicity(message, context);
+          if (toxResult) {
+            return {
+              response: toxResult.response,
+              source: 'moderation',
+              cost: this.costTracker.totalCost,
+              latency: Date.now() - startTime,
+              persona: context.persona,
+              classification: 'toxic',
+              moderationAction: toxResult.action
+            };
+          }
+          response = null;
           source = 'moderation';
           break;
+        }
 
         case 'complex':
         default:
@@ -362,10 +375,16 @@ Respond in JSON ONLY:
       logger.warn(`Toxicity severity ${assessment.severity}/10 — action: ${assessment.action} — reason: ${assessment.reason}`);
 
       if (assessment.severity >= 7) {
-        return `⚠️ **Please keep the conversation respectful.** Our moderation team has been notified.`;
+        return {
+          response: `⚠️ **Please keep the conversation respectful.** Our moderation team has been notified.`,
+          action: 'delete'
+        };
       }
 
-      return `💬 Hey ${context.username}, let's keep things friendly! If you have concerns, reach out to a moderator.`;
+      return {
+        response: `💬 Hey ${context.username}, let's keep things friendly! If you have concerns, reach out to a moderator.`,
+        action: 'delete'
+      };
 
     } catch (error) {
       logger.error('Toxicity assessment error:', error);
@@ -508,7 +527,7 @@ Answer the question using ONLY the knowledge base above. If the answer isn't in 
           response: `🚨 **Potential raid detected!** Identical messages from multiple accounts. Moderators have been alerted.`,
           source: 'moderation_raid',
           classification: 'raid',
-          action: 'delete'
+          action: 'timeout'
         };
       }
     } else {
