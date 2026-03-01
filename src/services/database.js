@@ -21,10 +21,15 @@ async function initializeDatabase() {
     }
 
     // Initialize with credentials
+    // Fix: strip wrapping quotes and handle escaped newlines
+    let privateKey = process.env.FIREBASE_PRIVATE_KEY || '';
+    privateKey = privateKey.replace(/^"|"$/g, ''); // Remove wrapping quotes
+    privateKey = privateKey.replace(/\\n/g, '\n');  // Convert literal \n to real newlines
+
     admin.initializeApp({
       credential: admin.credential.cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        privateKey: privateKey,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL
       })
     });

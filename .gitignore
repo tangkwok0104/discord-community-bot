@@ -1,0 +1,28 @@
+# Environment variables
+.env
+.env.local
+.env.*
+
+# Dependencies
+node_modules/
+jspm_packages/
+
+# Build outputs
+dist/
+dist-ssr/
+*.local
+
+# Firebase
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Deployment artifacts
+bot-deploy.tar.gz
+*.exp
+setup_vps.sh

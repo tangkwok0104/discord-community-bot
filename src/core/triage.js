@@ -13,6 +13,22 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const redis = require('../services/redis');
 const logger = require('../utils/logger');
 
+// === MODERATION PATTERNS ===
+const PII_PATTERNS = {
+  phone: /(?:\+?\d{1,3}[-\s.]?)?\(?\d{2,4}\)?[-\s.]?\d{3,4}[-\s.]?\d{3,5}/g,
+  email: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+  ssn: /\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b/g,
+  address: /\b\d{1,5}\s[A-Z][a-z]+\s(?:St|Ave|Blvd|Dr|Rd|Ln|Way|Ct|Pl)\b/gi
+};
+
+const PHISHING_DOMAINS = [
+  'discord-nltro', 'discorcl', 'dlscord', 'disc0rd', 'stearn',
+  'steamcommunlty', 'free-nitro', 'gift-nitro', 'nitro-gift',
+  'discord-airdrop', 'discordgift', 'discordapp-gift'
+];
+
+const ZALGO_REGEX = /[\u0300-\u036f\u0489]{3,}/;
+
 class TriageSystem {
   constructor() {
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -26,9 +42,9 @@ class TriageSystem {
       }
     });
 
-    // Gemini Pro for complex responses
+    // Gemini Flash for complex responses (lower cost than Pro)
     this.geminiPro = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-pro',
+      model: 'gemini-2.5-flash',
       generationConfig: {
         maxOutputTokens: 500,
         temperature: 0.3,
@@ -43,6 +59,10 @@ class TriageSystem {
       cacheMisses: 0,
       totalCost: 0
     };
+
+    // Raid / spam tracking
+    this.recentMessages = new Map(); // hash -> { count, users[], timestamp }
+    this.userMessageRates = new Map(); // `${serverId}:${userId}` -> timestamps[]
   }
 
   /**
@@ -55,6 +75,20 @@ class TriageSystem {
     const startTime = Date.now();
 
     try {
+      // LAYER 0: Instant Moderation Checks (regex, no AI cost)
+      const modResult = this.instantModerationCheck(message, context);
+      if (modResult) {
+        return {
+          response: modResult.response,
+          source: modResult.source,
+          cost: 0,
+          latency: Date.now() - startTime,
+          persona: context.persona,
+          classification: modResult.classification,
+          moderationAction: modResult.action // 'delete', 'timeout', 'warn'
+        };
+      }
+
       // LAYER 1: Check Cache (Semantic)
       const cached = await this.checkCache(message, context.serverId);
       if (cached) {
@@ -91,6 +125,19 @@ class TriageSystem {
         case 'faq':
           response = await this.getFAQResponse(message, context);
           source = 'faq_db';
+          break;
+
+        case 'rules_intent':
+          // User wants to change rules — let AI respond with guidance
+          response = await this.generateAIResponse(message, {
+            ...context,
+            persona: {
+              name: 'Bear (Mod Agent)',
+              description: 'Protective moderation specialist who helps manage server rules',
+              tone: 'firm but helpful'
+            }
+          });
+          source = 'rules_intent';
           break;
 
         case 'toxic':
@@ -192,13 +239,14 @@ class TriageSystem {
 Classify this Discord message into ONE category:
 - greeting: "hi", "hello", "hey", "sup", "yo", "morning", "lol", "haha"
 - junk: spam, random characters, nonsensical
-- faq: questions about rules, pricing, how-to, refunds
-- toxic: insults, harassment, threats, slurs
+- faq: questions about rules, pricing, how-to, refunds, roles, events
+- rules_intent: user wants to add/change/suggest a community rule
+- toxic: insults, harassment, threats, slurs, passive-aggressive attacks
 - complex: everything else that needs AI
 
 Message: "${message}"
 
-Respond with ONLY the category word (greeting/junk/faq/toxic/complex):
+Respond with ONLY the category word (greeting/junk/faq/rules_intent/toxic/complex):
 `;
 
     try {
@@ -206,7 +254,7 @@ Respond with ONLY the category word (greeting/junk/faq/toxic/complex):
       const classification = result.response.text().trim().toLowerCase();
 
       // Validate classification
-      const validClasses = ['greeting', 'junk', 'faq', 'toxic', 'complex'];
+      const validClasses = ['greeting', 'junk', 'faq', 'rules_intent', 'toxic', 'complex'];
       if (validClasses.includes(classification)) {
         return classification;
       }
@@ -242,6 +290,13 @@ Respond with ONLY the category word (greeting/junk/faq/toxic/complex):
     this.faqSystem = faqSystem;
   }
 
+  /**
+   * Set the RAG system reference (called from CommunityBot)
+   */
+  setRAGSystem(ragSystem) {
+    this.ragSystem = ragSystem;
+  }
+
   async getFAQResponse(message, context) {
     // Try FAQ database first (free)
     if (this.faqSystem) {
@@ -251,7 +306,17 @@ Respond with ONLY the category word (greeting/junk/faq/toxic/complex):
       }
     }
 
-    // No FAQ match — fall back to Gemini Pro (paid)
+    // Try RAG knowledge base second (cheap — just embedding cost)
+    if (this.ragSystem) {
+      const ragResults = await this.ragSystem.search(message, context.serverId);
+      if (ragResults.length > 0) {
+        // Use RAG context to generate a grounded answer
+        const ragContext = ragResults.join('\n---\n');
+        return this.generateRAGResponse(message, ragContext, context);
+      }
+    }
+
+    // No FAQ or RAG match — fall back to Gemini Pro (paid)
     this.costTracker.geminiProCalls++;
     this.costTracker.totalCost += 0.02;
     return this.generateAIResponse(message, context);
@@ -337,6 +402,141 @@ Respond naturally in character. Be helpful but concise (max 2 sentences).
   }
 
   /**
+   * Generate a RAG-grounded response using retrieved knowledge chunks
+   */
+  async generateRAGResponse(message, ragContext, context) {
+    const prompt = `
+You are ${context.persona.name}, ${context.persona.description}.
+Tone: ${context.persona.tone}
+
+You have access to the following knowledge base documents for this server:
+---
+${ragContext}
+---
+
+Server: ${context.serverName}
+User: ${context.username}
+Question: "${message}"
+
+Answer the question using ONLY the knowledge base above. If the answer isn't in the documents, say you don't have that information and suggest asking an admin. Be concise (max 3 sentences).
+`;
+
+    try {
+      this.costTracker.geminiProCalls++;
+      this.costTracker.totalCost += 0.02;
+      const result = await this.geminiPro.generateContent(prompt);
+      return result.response.text().trim();
+
+    } catch (error) {
+      logger.error('RAG response error:', error);
+      return this.getFallbackResponse();
+    }
+  }
+
+  /**
+   * INSTANT MODERATION CHECK — $0 cost, pure regex
+   * Returns null if message is clean, or moderation result if flagged
+   */
+  instantModerationCheck(message, context) {
+    // 1. PII Detection (phone, email, SSN, address)
+    for (const [type, pattern] of Object.entries(PII_PATTERNS)) {
+      if (pattern.test(message)) {
+        logger.warn(`🛡️ PII detected (${type}) in ${context.serverId} by ${context.username}`);
+        return {
+          response: `🛡️ **Your message was removed for your safety.** It appeared to contain personal information (${type}). Please be careful sharing private data!`,
+          source: 'moderation_pii',
+          classification: 'pii',
+          action: 'delete'
+        };
+      }
+    }
+
+    // 2. Phishing / Scam Link Detection
+    const msgLower = message.toLowerCase();
+    for (const domain of PHISHING_DOMAINS) {
+      if (msgLower.includes(domain)) {
+        logger.warn(`🚨 Phishing detected in ${context.serverId} by ${context.username}: ${domain}`);
+        return {
+          response: `🚨 **Phishing attempt blocked!** This link has been flagged as a scam. Never click suspicious links!`,
+          source: 'moderation_phishing',
+          classification: 'phishing',
+          action: 'delete'
+        };
+      }
+    }
+
+    // 3. Zalgo / Glitch Text
+    if (ZALGO_REGEX.test(message)) {
+      logger.warn(`🛡️ Zalgo text detected in ${context.serverId} by ${context.username}`);
+      return {
+        response: `🐻 Hey ${context.username}, please use normal text. Zalgo/glitch text disrupts the chat for everyone.`,
+        source: 'moderation_zalgo',
+        classification: 'zalgo',
+        action: 'delete'
+      };
+    }
+
+    // 4. Spam Rate Limiting (>5 messages in 10 seconds)
+    const rateKey = `${context.serverId}:${context.userId}`;
+    const now = Date.now();
+    const userTimestamps = this.userMessageRates.get(rateKey) || [];
+    const recent = userTimestamps.filter(t => now - t < 10000);
+    recent.push(now);
+    this.userMessageRates.set(rateKey, recent);
+
+    if (recent.length > 5) {
+      logger.warn(`🛡️ Spam detected in ${context.serverId} by ${context.username}: ${recent.length} msgs in 10s`);
+      return {
+        response: `⚠️ **Slow down, ${context.username}!** You're sending messages too fast. Please wait a moment.`,
+        source: 'moderation_spam',
+        classification: 'spam',
+        action: 'timeout'
+      };
+    }
+
+    // 5. Raid Detection (identical messages from multiple accounts)
+    const msgHash = this.hashMessage(message);
+    const raidEntry = this.recentMessages.get(msgHash) || { count: 0, users: new Set(), timestamp: now };
+    if (now - raidEntry.timestamp < 30000) { // Within 30 seconds
+      raidEntry.count++;
+      raidEntry.users.add(context.userId);
+      this.recentMessages.set(msgHash, raidEntry);
+
+      if (raidEntry.users.size >= 3) {
+        logger.warn(`🚨 RAID DETECTED in ${context.serverId}: ${raidEntry.users.size} users sent identical messages`);
+        return {
+          response: `🚨 **Potential raid detected!** Identical messages from multiple accounts. Moderators have been alerted.`,
+          source: 'moderation_raid',
+          classification: 'raid',
+          action: 'delete'
+        };
+      }
+    } else {
+      this.recentMessages.set(msgHash, { count: 1, users: new Set([context.userId]), timestamp: now });
+    }
+
+    // Clean up old rate-limit entries every 100 checks
+    if (Math.random() < 0.01) this.cleanupRateLimits();
+
+    return null; // Message is clean
+  }
+
+  /**
+   * Clean up old rate limiting data
+   */
+  cleanupRateLimits() {
+    const now = Date.now();
+    for (const [key, timestamps] of this.userMessageRates.entries()) {
+      const recent = timestamps.filter(t => now - t < 10000);
+      if (recent.length === 0) this.userMessageRates.delete(key);
+      else this.userMessageRates.set(key, recent);
+    }
+    for (const [key, entry] of this.recentMessages.entries()) {
+      if (now - entry.timestamp > 30000) this.recentMessages.delete(key);
+    }
+  }
+
+  /**
    * Fallback response when AI fails
    */
   getFallbackResponse() {
@@ -347,8 +547,6 @@ Respond naturally in character. Be helpful but concise (max 2 sentences).
    * Hash message for cache key
    */
   hashMessage(message) {
-    // Simple hash for MVP
-    // TODO: Use proper semantic hashing
     return message.toLowerCase()
       .replace(/[^a-z0-9]/g, '')
       .slice(0, 50);

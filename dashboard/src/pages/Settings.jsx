@@ -67,52 +67,56 @@ export default function Settings() {
     const toggleAgent = (key) => setAgents({ ...agents, [key]: !agents[key] });
 
     return (
-        <div className="animate-in fade-in duration-500">
-            <header className="mb-8 border-b border-gray-800 pb-6">
-                <h1 className="text-3xl font-bold text-white mb-2">Agent Settings</h1>
-                <p className="text-gray-400">Configure which personas are active for your server.</p>
+        <div className="animate-in fade-in duration-500 relative pb-12">
+            <header className="mb-8 border-b border-primary-500/30 pb-4 relative">
+                <div className="absolute -bottom-[1px] left-0 w-32 h-[1px] bg-primary-400 glow-border"></div>
+                <h1 className="text-3xl font-bold text-primary-400 mb-2 uppercase tracking-tight glow-text flex items-center gap-3">
+                    <span className="w-2 h-6 bg-primary-500 inline-block animate-pulse"></span>
+                    Agent Configuration
+                </h1>
+                <p className="text-gray-400 uppercase tracking-widest text-sm font-bold">Manage active neural network personas.</p>
 
-                <div className="mt-6 flex max-w-md items-center gap-3">
+                <div className="mt-6 flex max-w-md items-center gap-0">
                     <input
                         type="text"
-                        placeholder="Discord Server ID"
+                        placeholder="SERVER ID"
                         value={serverId}
                         onChange={(e) => setServerId(e.target.value)}
-                        className="flex-1 bg-dark-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary-500 transition-colors"
+                        className="flex-1 bg-dark-900 border border-primary-500/30 px-4 py-2.5 text-primary-400 focus:outline-none focus:border-primary-500 transition-colors uppercase tracking-widest placeholder:text-primary-900 glow-border"
                     />
                     <button
                         onClick={fetchConfig}
                         disabled={!serverId || loading}
-                        className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors font-medium disabled:opacity-50"
+                        className="px-6 py-2.5 bg-primary-500/10 hover:bg-primary-500/20 text-primary-400 border border-primary-500/50 transition-colors font-bold uppercase tracking-widest disabled:opacity-50 glow-border"
                     >
-                        {loading ? 'Loading...' : 'Load'}
+                        {loading ? 'INITIALIZING...' : 'CONNECT'}
                     </button>
                 </div>
             </header>
 
             {message && (
-                <div className={`p-4 rounded-xl mb-6 flex items-center gap-3 ${message.includes('❌') || message.includes('Failed') ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-primary-500/10 text-primary-400 border border-primary-500/20'}`}>
-                    <AlertCircle className="w-5 h-5" />
-                    {message}
+                <div className={`p-4 mb-6 flex items-center gap-3 uppercase font-bold tracking-wider ${message.includes('❌') || message.includes('Failed') ? 'bg-red-500/10 text-red-500 border border-red-500/50 glow-border' : 'bg-primary-500/10 text-primary-400 border border-primary-500/50 glow-border'}`}>
+                    <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                    <span>{message}</span>
                 </div>
             )}
 
-            <div className="grid gap-4 max-w-2xl mb-8">
+            <div className="grid gap-6 max-w-2xl mb-12">
                 <AgentToggle
-                    title="Otter 🦦"
-                    description="Handles friendly welcomes and general chat."
+                    title="UNIT 01: OTTER"
+                    description="Handles friendly welcomes and general chat processing."
                     isEnabled={agents.otter}
                     onToggle={() => toggleAgent('otter')}
                 />
                 <AgentToggle
-                    title="Bear 🐻"
-                    description="Enforces rules and handles toxicity moderation."
+                    title="UNIT 02: BEAR"
+                    description="Enforces behavioral parameters and mitigates toxicity."
                     isEnabled={agents.bear}
                     onToggle={() => toggleAgent('bear')}
                 />
                 <AgentToggle
-                    title="Owl 🦉"
-                    description="Provides server analytics and insights."
+                    title="UNIT 03: OWL"
+                    description="Compiles server analytics and operational insights."
                     isEnabled={agents.owl}
                     onToggle={() => toggleAgent('owl')}
                 />
@@ -121,27 +125,42 @@ export default function Settings() {
             <button
                 onClick={handleSave}
                 disabled={saving || !serverId}
-                className="flex items-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-medium transition-colors shadow-lg shadow-primary-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-3 px-8 py-4 bg-primary-600/20 hover:bg-primary-500/40 text-primary-400 border border-primary-500 glow-border font-bold uppercase tracking-[0.2em] transition-all disabled:opacity-50 disabled:cursor-not-allowed group relative overflow-hidden"
             >
-                <Save className="w-5 h-5" />
-                {saving ? 'Saving...' : 'Save Configuration'}
+                <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-primary-400/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
+                <Save className="w-5 h-5 relative z-10" />
+                <span className="relative z-10">{saving ? 'UPLOADING...' : 'COMMIT CHANGES'}</span>
             </button>
+
+            <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-primary-500/50"></div>
+            <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-primary-500/50"></div>
         </div>
     );
 }
 
 function AgentToggle({ title, description, isEnabled, onToggle }) {
     return (
-        <div className="flex items-center justify-between p-5 rounded-xl border border-gray-800 bg-dark-800/50 hover:bg-dark-800 transition-colors">
-            <div>
-                <h3 className="text-lg font-semibold text-white">{title}</h3>
-                <p className="text-gray-400 text-sm mt-1">{description}</p>
+        <div className={`flex flex-col sm:flex-row sm:items-center justify-between p-6 border bg-dark-900 relative group overflow-hidden transition-all ${isEnabled ? 'border-primary-500/50 glow-border' : 'border-gray-800'}`}>
+            <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-transparent via-primary-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSIvPjwvc3ZnPg==')] opacity-10"></div>
+
+            <div className="z-10 mb-4 sm:mb-0 pr-4">
+                <h3 className={`text-lg font-bold tracking-widest uppercase flex items-center gap-2 ${isEnabled ? 'text-primary-400 glow-text' : 'text-gray-500'}`}>
+                    {isEnabled && <span className="w-1.5 h-1.5 bg-primary-400 rounded-full animate-pulse"></span>}
+                    {title}
+                </h3>
+                <p className="text-gray-400 text-sm mt-2 tracking-wide">{description}</p>
             </div>
+
             <button
                 onClick={onToggle}
-                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-300 ${isEnabled ? 'bg-primary-500' : 'bg-gray-600'}`}
+                className={`relative inline-flex h-8 w-16 items-center border transition-all duration-300 z-10 shrink-0 ${isEnabled ? 'bg-primary-500/20 border-primary-400 glow-border' : 'bg-dark-800 border-gray-600'}`}
             >
-                <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform duration-300 ${isEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                <div className="absolute inset-0 flex items-center justify-between px-2 text-[10px] font-bold text-gray-500 pointer-events-none">
+                    <span>OFF</span>
+                    <span>ON</span>
+                </div>
+                <span className={`inline-block h-6 w-6 transform bg-primary-400 transition-transform duration-300 relative z-20 ${isEnabled ? 'translate-x-9 shadow-[0_0_10px_#4ade80]' : 'translate-x-1 bg-gray-500'}`} />
             </button>
         </div>
     );

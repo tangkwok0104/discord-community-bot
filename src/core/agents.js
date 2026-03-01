@@ -278,6 +278,56 @@ class MultiAgentSystem {
   getAllPersonas() {
     return PERSONAS;
   }
+
+  /**
+   * Send moderation event to #admin-logs channel
+   * Creates the channel if it doesn't exist
+   */
+  async sendToAdminLog(guild, logData) {
+    try {
+      // Find or create admin-logs channel
+      let adminChannel = guild.channels.cache.find(
+        ch => ch.name === 'admin-logs' || ch.name === 'mod-logs'
+      );
+
+      if (!adminChannel) {
+        // Create a private admin-logs channel (only visible to admins)
+        adminChannel = await guild.channels.create({
+          name: 'admin-logs',
+          topic: '🛡️ Automated moderation logs | Bear Agent',
+          permissionOverwrites: [
+            {
+              id: guild.id, // @everyone
+              deny: ['ViewChannel']
+            }
+          ],
+          reason: 'Auto-created by Bear for moderation logging'
+        });
+        logger.info(`Created #admin-logs channel in ${guild.name}`);
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(logData.severity === 'high' ? 0xFF0000 : logData.severity === 'medium' ? 0xFFA500 : 0xFFFF00)
+        .setTitle(`🛡️ ${logData.title}`)
+        .setDescription(logData.description || 'Moderation event logged')
+        .addFields(
+          { name: 'User', value: logData.user || 'Unknown', inline: true },
+          { name: 'Type', value: logData.type || 'Unknown', inline: true },
+          { name: 'Action Taken', value: logData.action || 'Logged', inline: true }
+        )
+        .setFooter({ text: 'Bear 🐻 Moderation System' })
+        .setTimestamp();
+
+      if (logData.messageContent) {
+        embed.addFields({ name: 'Original Message', value: logData.messageContent.slice(0, 1024) });
+      }
+
+      await adminChannel.send({ embeds: [embed] });
+
+    } catch (error) {
+      logger.error('Failed to send admin log:', error);
+    }
+  }
 }
 
 module.exports = { MultiAgentSystem, PERSONAS };

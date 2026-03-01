@@ -10,6 +10,9 @@ const TriageSystem = require('./core/triage');
 const { MultiAgentSystem } = require('./core/agents');
 const CommandHandler = require('./core/commands');
 const FAQSystem = require('./core/faq');
+const RulesManager = require('./core/rules');
+const RAGSystem = require('./core/rag');
+const AnalyticsSystem = require('./core/analytics');
 const logger = require('./utils/logger');
 const { initializeDatabase } = require('./services/database');
 const { initializeRedis } = require('./services/redis');
@@ -35,10 +38,14 @@ class CommunityBot {
     this.triage = new TriageSystem();
     this.agents = new MultiAgentSystem();
     this.faq = new FAQSystem();
+    this.rules = new RulesManager();
+    this.rag = new RAGSystem();
+    this.analytics = new AnalyticsSystem();
     this.commands = new CommandHandler(this);
 
-    // Wire FAQ system into triage for database lookups
+    // Wire FAQ and RAG systems into triage for database lookups
     this.triage.setFAQSystem(this.faq);
+    this.triage.setRAGSystem(this.rag);
 
     // State tracking
     this.isReady = false;
@@ -82,7 +89,10 @@ class CommunityBot {
 
       logger.info(`🟢 Logged in as ${this.client.user.tag}`);
       logger.info(`📊 Serving ${this.serverCount} servers`);
-      logger.info(`🤖 Multi-agent system active: Kelly, Bruce, Gamma`);
+      logger.info(`🤖 Multi-agent system active: Otter 🦦, Bear 🐻, Owl 🦉`);
+
+      // Start analytics periodic flush
+      this.analytics.startPeriodicFlush();
 
       // Register slash commands
       await this.commands.registerCommands();
@@ -105,8 +115,20 @@ class CommunityBot {
       await this.handleNewMember(member);
     });
 
-    // Slash command handler
+    // Slash command + Button interaction handler
     this.client.on('interactionCreate', async (interaction) => {
+      // Handle button clicks (rule approvals, etc.)
+      if (interaction.isButton()) {
+        try {
+          const handled = await this.rules.handleButtonInteraction(interaction);
+          if (handled) return;
+        } catch (err) {
+          logger.error('Button interaction error:', err);
+        }
+        return;
+      }
+
+      // Handle slash commands
       await this.commands.handleInteraction(interaction);
     });
 
@@ -150,19 +172,68 @@ class CommunityBot {
       // Process through triage system
       const result = await this.triage.processMessage(message.content, context);
 
+      // Track analytics
+      this.analytics.trackMessage(message.guild.id, result.classification, result.source);
+      if (result.source === 'fallback') {
+        this.analytics.trackUnanswered(message.guild.id, message.content, message.author.id);
+      }
+
       // Log for monitoring
       logger.info(`[${personaKey}] ${message.author.username}: "${message.content.slice(0, 30)}..." -> ${result.source} (${result.latency}ms)`);
 
-      // Send response if exists
+      // === MODERATION ACTIONS ===
+      if (result.moderationAction) {
+        const effectivePersona = 'bear'; // Bear handles all moderation
+
+        // Execute moderation action
+        try {
+          if (result.moderationAction === 'delete') {
+            await message.delete();
+            logger.info(`🗑️ Deleted message from ${message.author.username} (${result.classification})`);
+          }
+
+          if (result.moderationAction === 'timeout') {
+            const member = await message.guild.members.fetch(message.author.id);
+            await member.timeout(60 * 1000, `Auto-moderated: ${result.classification}`); // 1 min timeout
+            logger.info(`⏱️ Timed out ${message.author.username} for 1 minute (${result.classification})`);
+          }
+        } catch (modError) {
+          logger.error('Moderation action failed (permissions?):', modError.message);
+        }
+
+        // Send warning response
+        if (result.response) {
+          await this.agents.sendAs(effectivePersona, message.channel, result.response);
+        }
+
+        // Log to admin channel
+        await this.agents.sendToAdminLog(message.guild, {
+          title: `${result.classification.toUpperCase()} Detected`,
+          description: `Bear auto-moderated a message in #${message.channel.name}`,
+          user: `${message.author.tag} (${message.author.id})`,
+          type: result.classification,
+          action: result.moderationAction === 'delete' ? 'Message Deleted' :
+            result.moderationAction === 'timeout' ? 'User Timed Out (1 min)' : 'Warned',
+          severity: ['raid', 'phishing'].includes(result.classification) ? 'high' : 'medium',
+          messageContent: message.content
+        });
+
+        return; // Don't process further
+      }
+
+      // === NORMAL RESPONSE ===
       if (result.response) {
-        await this.agents.sendAs(personaKey, message.channel, result.response);
+        // Handle rules_intent classification -> forward to rules system
+        const effectivePersona = result.classification === 'rules_intent' ? 'bear' : personaKey;
+
+        await this.agents.sendAs(effectivePersona, message.channel, result.response);
 
         // Add to history
         this.agents.addToHistory(message.author.id, {
           type: 'message',
           content: message.content,
           response: result.response,
-          persona: personaKey,
+          persona: effectivePersona,
           source: result.source
         });
       }
@@ -193,6 +264,14 @@ class CommunityBot {
 
       if (welcomeChannel) {
         await this.agents.welcomeNewMember(member, welcomeChannel);
+
+        // Check for milestone celebrations
+        const count = member.guild.memberCount;
+        if (this.analytics.checkMilestone(count)) {
+          await this.agents.sendAs('owl', welcomeChannel,
+            `🎉🦉 **MILESTONE REACHED!** This community just hit **${count.toLocaleString()} members!** Amazing growth! 📈`
+          );
+        }
       }
 
     } catch (error) {
@@ -205,6 +284,9 @@ class CommunityBot {
    */
   async shutdown() {
     logger.info('🛑 Shutting down gracefully...');
+
+    // Flush analytics before shutdown
+    await this.analytics.shutdown();
 
     // Set offline status
     if (this.client.user) {

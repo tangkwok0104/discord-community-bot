@@ -77,100 +77,125 @@ export default function FAQ() {
     };
 
     return (
-        <div className="animate-in fade-in duration-500">
-            <header className="mb-8 border-b border-gray-800 pb-6">
-                <h1 className="text-3xl font-bold text-white mb-2">FAQ Manager</h1>
-                <p className="text-gray-400">Manage the knowledge base queries used by the bot.</p>
+        <div className="animate-in fade-in duration-500 relative pb-12 w-full">
+            <header className="mb-8 border-b border-primary-500/30 pb-4 relative">
+                <div className="absolute -bottom-[1px] left-0 w-32 h-[1px] bg-primary-400 glow-border"></div>
+                <h1 className="text-3xl font-bold text-primary-400 mb-2 uppercase tracking-tight glow-text flex items-center gap-3">
+                    <span className="w-2 h-6 bg-primary-500 inline-block animate-pulse"></span>
+                    Knowledge Base
+                </h1>
+                <p className="text-gray-400 uppercase tracking-widest text-sm font-bold">Manage neural network response protocols.</p>
 
-                <div className="mt-6 flex max-w-md items-center gap-3">
+                <div className="mt-6 flex max-w-md items-center gap-0">
                     <input
                         type="text"
-                        placeholder="Discord Server ID"
+                        placeholder="SERVER ID"
                         value={serverId}
                         onChange={(e) => setServerId(e.target.value)}
-                        className="flex-1 bg-dark-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary-500"
+                        className="flex-1 bg-dark-900 border border-primary-500/30 px-4 py-2.5 text-primary-400 focus:outline-none focus:border-primary-500 transition-colors uppercase tracking-widest placeholder:text-primary-900 glow-border"
                     />
                     <button
                         onClick={fetchFAQs}
                         disabled={!serverId || loading}
-                        className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors font-medium disabled:opacity-50"
+                        className="px-6 py-2.5 bg-primary-500/10 hover:bg-primary-500/20 text-primary-400 border border-primary-500/50 transition-colors font-bold uppercase tracking-widest disabled:opacity-50 glow-border"
                     >
-                        {loading ? 'Loading...' : 'Load FAQs'}
+                        {loading ? 'SYNCING...' : 'SYNC DATA'}
                     </button>
                 </div>
             </header>
 
             {message && (
-                <div className={`p-4 rounded-xl mb-6 flex items-center gap-3 ${message.includes('❌') || message.includes('Failed') ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-primary-500/10 text-primary-400 border border-primary-500/20'}`}>
-                    <AlertCircle className="w-5 h-5" />
-                    {message}
+                <div className={`p-4 mb-6 flex items-center gap-3 uppercase font-bold tracking-wider ${message.includes('❌') || message.includes('Failed') ? 'bg-red-500/10 text-red-500 border border-red-500/50 glow-border' : 'bg-primary-500/10 text-primary-400 border border-primary-500/50 glow-border'}`}>
+                    <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                    <span>{message}</span>
                 </div>
             )}
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                 <div className="xl:col-span-2 space-y-4">
-                    <h2 className="text-xl font-semibold text-white mb-4">Existing FAQs ({faqs.length})</h2>
+                    <h2 className="text-xl font-bold text-primary-400 mb-4 tracking-widest uppercase glow-text flex items-center gap-2">
+                        <span className="w-2 h-2 bg-primary-500"></span>
+                        Active Protocols ({faqs.length})
+                    </h2>
 
                     {faqs.length === 0 && !loading && (
-                        <div className="p-8 text-center border border-dashed border-gray-700 rounded-2xl bg-dark-800/50">
-                            <p className="text-gray-500">No FAQs found. Add one to get started.</p>
+                        <div className="p-8 text-center border border-dashed border-primary-500/30 bg-dark-900/50 relative overflow-hidden group">
+                            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSIvPjwvc3ZnPg==')] opacity-10"></div>
+                            <p className="text-primary-500/50 uppercase tracking-widest relative z-10 font-bold">No active protocols found. Awaiting input.</p>
                         </div>
                     )}
 
                     {faqs.map(faq => (
-                        <div key={faq.id} className="p-5 rounded-xl border border-gray-800 bg-dark-800 group transition-all hover:border-gray-600">
-                            <div className="flex justify-between items-start gap-4">
-                                <div className="flex-1">
-                                    <h3 className="text-lg font-medium text-white mb-2">Q: {faq.question}</h3>
-                                    <p className="text-gray-400 leading-relaxed whitespace-pre-wrap">A: {faq.answer}</p>
+                        <div key={faq.id} className="p-5 border border-primary-500/30 bg-dark-900 group transition-all hover:border-primary-500 glow-border relative overflow-hidden">
+                            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSIvPjwvc3ZnPg==')] opacity-10"></div>
+                            <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-transparent via-primary-500/50 to-transparent"></div>
+                            <div className="flex justify-between items-start gap-4 relative z-10">
+                                <div className="flex-1 pr-4">
+                                    <h3 className="text-lg font-bold text-primary-400 mb-2 tracking-widest uppercase border-b border-primary-500/20 pb-2">
+                                        <span className="text-primary-600 mr-2">Q:</span>{faq.question}
+                                    </h3>
+                                    <p className="text-gray-300 leading-relaxed whitespace-pre-wrap font-sans text-sm tracking-wide">
+                                        <span className="text-primary-600 font-bold font-mono mr-2">A:</span>{faq.answer}</p>
                                 </div>
                                 <button
                                     onClick={() => handleDelete(faq.id)}
-                                    className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                    className="p-3 text-red-500/50 border border-transparent hover:text-red-400 hover:border-red-500/50 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100 uppercase text-xs font-bold tracking-wider"
                                 >
-                                    <Trash2 className="w-5 h-5" />
+                                    <Trash2 className="w-5 h-5 mb-1 mx-auto" />
+                                    Purge
                                 </button>
                             </div>
                         </div>
                     ))}
                 </div>
 
-                <div className="bg-dark-800 border border-gray-800 rounded-2xl p-6 h-max sticky top-8">
-                    <h2 className="text-lg font-semibold text-white mb-4">Add New Entry</h2>
-                    <form onSubmit={handleAddFAQ} className="space-y-4">
+                <div className="bg-dark-900 border border-primary-500/30 p-6 h-max sticky top-8 glow-border relative overflow-hidden">
+                    <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSIvPjwvc3ZnPg==')] opacity-10"></div>
+                    <div className="absolute top-0 right-0 w-20 h-20 bg-primary-500/5 blur-xl -mr-10 -mt-10"></div>
+
+                    <h2 className="text-lg font-bold text-primary-400 mb-6 tracking-widest uppercase flex items-center gap-2 relative z-10">
+                        <span className="w-2 h-2 bg-primary-500 animate-ping"></span>
+                        Inject Protocol
+                    </h2>
+
+                    <form onSubmit={handleAddFAQ} className="space-y-5 relative z-10">
                         <div>
-                            <label className="block text-sm font-medium text-gray-400 mb-1">Question</label>
+                            <label className="block text-xs font-bold text-primary-500/70 mb-2 uppercase tracking-widest">Query Parameter</label>
                             <input
                                 type="text"
                                 required
                                 value={newQuestion}
                                 onChange={e => setNewQuestion(e.target.value)}
-                                placeholder="e.g. What are the rules?"
-                                className="w-full bg-dark-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+                                placeholder="E.G. WHAT ARE THE DIRECTIVES?"
+                                className="w-full bg-dark-900 border border-primary-500/30 px-4 py-3 text-primary-400 focus:outline-none focus:border-primary-500 placeholder:text-primary-900 transition-colors uppercase"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-400 mb-1">Answer</label>
+                            <label className="block text-xs font-bold text-primary-500/70 mb-2 uppercase tracking-widest">Response Matrix</label>
                             <textarea
                                 required
                                 value={newAnswer}
                                 onChange={e => setNewAnswer(e.target.value)}
-                                placeholder="e.g. Be respectful and kind..."
+                                placeholder="E.G. MAINTAIN OPERATIONAL EFFICIENCY..."
                                 rows={5}
-                                className="w-full bg-dark-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-primary-500 resize-none"
+                                className="w-full bg-dark-900 border border-primary-500/30 px-4 py-3 text-primary-400 focus:outline-none focus:border-primary-500 placeholder:text-primary-900 transition-colors resize-none uppercase"
                             />
                         </div>
                         <button
                             type="submit"
                             disabled={isSubmitting || !serverId}
-                            className="w-full flex justify-center items-center gap-2 py-3 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50"
+                            className="w-full flex justify-center items-center gap-3 py-4 bg-primary-600/20 hover:bg-primary-500/40 text-primary-400 font-bold uppercase tracking-[0.2em] border border-primary-500 transition-all disabled:opacity-50 glow-border group relative overflow-hidden"
                         >
-                            <Plus className="w-5 h-5" />
-                            {isSubmitting ? 'Adding...' : 'Add FAQ'}
+                            <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-primary-400/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
+                            <Plus className="w-5 h-5 relative z-10" />
+                            <span className="relative z-10">{isSubmitting ? 'UPLOADING...' : 'SAVE PROTOCOL'}</span>
                         </button>
                     </form>
                 </div>
             </div>
+
+            <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-primary-500/50"></div>
+            <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-primary-500/50"></div>
         </div>
     );
 }
